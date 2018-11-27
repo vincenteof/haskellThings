@@ -1,0 +1,1 @@
+Interestring thoughts expressed using Haskell.
