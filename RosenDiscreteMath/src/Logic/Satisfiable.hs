@@ -1,4 +1,11 @@
-module Logic.Satisfiable where
+module Logic.Satisfiable 
+( single
+, both
+, oneOf
+, neg
+, satisfiable
+, CompoundProp
+) where
 
 import qualified Data.Map as M
 import Data.List
