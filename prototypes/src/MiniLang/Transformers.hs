@@ -24,28 +24,28 @@ data Value = IntVal Integer
 
 type Env = M.Map Name Value
 
--- Eval 1
-type Eval1 a = Identity a
+-- Eval 2
+type Eval2 a = ExceptT String Identity a
 
-runEval :: Eval1 a -> a
-runEval = runIdentity
+runEval2 :: Eval2 a -> Either String a
+runEval2 = runIdentity . runExceptT
 
-eval1 :: Env -> Exp -> Eval1 Value
+eval2a :: Env -> Exp -> Eval2 Value
 
-eval1 env (Lit num) = return $ IntVal num
+eval2a env (Lit num) = return $ IntVal num
 
-eval1 env (Var name) = return . fromJust . M.lookup name $ env
+eval2a env (Var name) = return . fromJust . M.lookup name $ env
 
-eval1 env (Plus exp1 exp2) = do
-  IntVal num1 <- eval1 env exp1
-  IntVal num2 <- eval1 env exp2
+eval2a env (Plus exp1 exp2) = do
+  IntVal num1 <- eval2a env exp1
+  IntVal num2 <- eval2a env exp2
   return . IntVal $ num1 + num2
-eval1 env (Abs name exp) = return $ FunVal env name exp
 
-eval1 env (App funcExp exp) = do
-  FunVal funcEnv name body <- eval1 env funcExp
-  val <- eval1 env exp
-  eval1 (M.insert name val funcEnv) body
+eval2a env (Abs name exp) = return $ FunVal env name exp
+
+eval2a env (App funcExp exp) = do
+  FunVal funcEnv name body <- eval2a env funcExp
+  val <- eval2a env exp
+  eval2a (M.insert name val funcEnv) body
 
 exampleExp = Lit 12 `Plus` App (Abs "x" (Var "x")) (Lit 4 `Plus` Lit 2)
-
