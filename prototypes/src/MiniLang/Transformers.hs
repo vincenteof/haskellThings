@@ -24,49 +24,53 @@ data Value = IntVal Integer
 
 type Env = M.Map Name Value
 
--- eval 4
-type Eval4 a = ReaderT Env (ExceptT String (StateT Integer Identity)) a
+--eval 6
+type Eval6 a = ReaderT Env (ExceptT String
+                            (WriterT [String] (StateT Integer IO))) a
 
-runEval4 :: Env -> Integer -> Eval4 a -> (Either String a, Integer)
-runEval4 env st ev = runIdentity (runStateT (runExceptT (runReaderT ev env)) st)
+runEval6 :: Env -> Integer -> Eval6 a -> IO ((Either String a, [String]), Integer)
+runEval6 env st ev = 
+  runStateT (runWriterT (runExceptT (runReaderT ev env))) st
+
+eval6 :: Exp -> Eval6 Value
+eval6 (Lit num) = do
+  tick
+  liftIO $ print num
+  return $ IntVal num
+eval6 (Var name) = do
+  tick
+  tell [name]
+  env <- ask
+  case M.lookup name env of
+    Nothing -> throwError $ "unbounded variable: " ++ name
+    Just v -> return v
+eval6 (Plus e1 e2) = do
+  tick
+  v1 <- eval6 e1
+  v2 <- eval6 e2
+  case (v1, v2) of
+    (IntVal num1, IntVal num2) -> return $ IntVal (num1 + num2)
+    _ -> throwError "type error in addition"
+eval6 (Abs name body) = do
+  tick
+  env <- ask
+  return $ FunVal env name body
+eval6 (App funcExp exp) = do
+  tick
+  fv <- eval6 funcExp
+  paramV <- eval6 exp
+  case fv of
+    FunVal prevEnv name body -> local (const (M.insert name paramV prevEnv))
+                                      (eval6 body)
+    _ -> throwError "type error in application"
 
 tick :: (Num s, MonadState s m) => m ()
 tick = do
   st <- get
   put (st + 1)
 
-eval4 :: Exp -> Eval4 Value
-eval4 (Lit num) = do
-  tick
-  return $ IntVal num
-eval4 (Var name) = do
-  tick
-  env <- ask
-  case M.lookup name env of
-    Nothing -> throwError $ "unbounded variable: " ++ name
-    Just v -> return v
-eval4 (Plus exp1 exp2) = do
-  tick
-  v1 <- eval4 exp1
-  v2 <- eval4 exp2
-  case (v1, v2) of
-    (IntVal num1, IntVal num2) -> return $ IntVal (num1 + num2)
-    _ -> throwError "type error in addition"
-eval4 (Abs paramName body) = do
-  tick
-  env <- ask
-  return $ FunVal env paramName body
-eval4 (App funcExp exp) = do
-  tick
-  fv <- eval4 funcExp
-  paramV <- eval4 exp
-  case fv of
-    FunVal prevEnv name body -> local (const (M.insert name paramV prevEnv))
-                                      (eval4 body)
-    _ -> throwError "type error in application"
-
-
 exampleExp = Lit 12 `Plus` App (Abs "x" (Var "x")) (Lit 4 `Plus` Lit 2)
+
 
 
 
