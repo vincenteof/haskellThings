@@ -24,40 +24,6 @@ data Value = IntVal Integer
 
 type Env = M.Map Name Value
 
--- Eval 2
-type Eval2 a = ExceptT String Identity a
-
-runEval2 :: Eval2 a -> Either String a
-runEval2 = runIdentity . runExceptT
-
-eval2 :: Env -> Exp -> Eval2 Value
-
-eval2 env (Lit num) = return $ IntVal num
-
--- eval2 env (Var name) = return . fromJust . M.lookup name $ env
-eval2 env (Var name) = case M.lookup name env of
-  Nothing -> throwError $ "unbounded variable: " ++ name
-  Just v -> return v
-
-eval2 env (Plus exp1 exp2) = do
-  v1 <- eval2 env exp1
-  v2 <- eval2 env exp2
-  case (v1, v2) of
-    (IntVal num1, IntVal num2) -> return . IntVal $ num1 + num2
-    _ -> throwError "type error in addition"
-
-eval2 env (Abs name exp) = return $ FunVal env name exp
-
-eval2 env (App funcExp exp) = do
-  v1 <- eval2 env funcExp
-  v2 <- eval2 env exp
-  case v1 of
-    FunVal funcEnv name body -> eval2 (M.insert name v2 funcEnv) body
-    _ -> throwError "type error in application"
-
-
-exampleExp = Lit 12 `Plus` App (Abs "x" (Var "x")) (Lit 4 `Plus` Lit 2)
-
 -- eval3
 type Eval3 a = ReaderT Env (ExceptT String Identity) a
 
@@ -87,4 +53,50 @@ eval3 (App funcExp exp) = do
     FunVal prevEnv name body -> local (const (M.insert name v prevEnv))
                                       (eval3 body)
     _ -> throwError "type error in application"
+
+-- eval 4
+type Eval4 a = ReaderT Env (ExceptT String (StateT Integer Identity)) a
+
+runEval4 :: Env -> Integer -> Eval4 a -> (Either String a, Integer)
+runEval4 env st ev = runIdentity (runStateT (runExceptT (runReaderT ev env)) st)
+
+tick :: (Num s, MonadState s m) => m ()
+tick = do
+  st <- get
+  put (st + 1)
+
+eval4 :: Exp -> Eval4 Value
+eval4 (Lit num) = do
+  tick
+  return $ IntVal num
+eval4 (Var name) = do
+  tick
+  env <- ask
+  case M.lookup name env of
+    Nothing -> throwError $ "unbounded variable: " ++ name
+    Just v -> return v
+eval4 (Plus exp1 exp2) = do
+  tick
+  v1 <- eval4 exp1
+  v2 <- eval4 exp2
+  case (v1, v2) of
+    (IntVal num1, IntVal num2) -> return $ IntVal (num1 + num2)
+    _ -> throwError "type error in addition"
+eval4 (Abs paramName body) = do
+  tick
+  env <- ask
+  return $ FunVal env paramName body
+eval4 (App funcExp exp) = do
+  tick
+  fv <- eval4 funcExp
+  paramV <- eval4 exp
+  case fv of
+    FunVal prevEnv name body -> local (const (M.insert name paramV prevEnv))
+                                      (eval4 body)
+    _ -> throwError "type error in application"
+
+
+exampleExp = Lit 12 `Plus` App (Abs "x" (Var "x")) (Lit 4 `Plus` Lit 2)
+
+
 
