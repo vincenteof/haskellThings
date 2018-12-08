@@ -24,36 +24,6 @@ data Value = IntVal Integer
 
 type Env = M.Map Name Value
 
--- eval3
-type Eval3 a = ReaderT Env (ExceptT String Identity) a
-
-runEval3 :: Env -> Eval3 a -> Either String a
-runEval3 env ev = runIdentity . runExceptT . runReaderT ev $ env
-
-eval3 :: Exp -> Eval3 Value
-eval3 (Lit num) = return $ IntVal num
-eval3 (Var name) = do
-  env <- ask
-  case M.lookup name env of
-    Nothing -> throwError $ "unbounded variable: " ++ name
-    Just v -> return v
-eval3 (Plus exp1 exp2) = do
-  v1 <- eval3 exp1
-  v2 <- eval3 exp2
-  case (v1, v2) of
-    (IntVal num1, IntVal num2) -> return $ IntVal (num1 + num2)
-    _ -> throwError "type error in addition"
-eval3 (Abs paramName exp) = do
-  env <- ask
-  return $ FunVal env paramName exp
-eval3 (App funcExp exp) = do
-  fv <- eval3 funcExp
-  v <- eval3 exp
-  case fv of
-    FunVal prevEnv name body -> local (const (M.insert name v prevEnv))
-                                      (eval3 body)
-    _ -> throwError "type error in application"
-
 -- eval 4
 type Eval4 a = ReaderT Env (ExceptT String (StateT Integer Identity)) a
 
