@@ -4,6 +4,7 @@ module Transformer.HandMade where
  
 import Data.Text
 import qualified Data.Text.IO as T
+import Data.Map as M
 
 data LoginError = InvalidEmail 
     | NoSuchUser
@@ -33,11 +34,38 @@ instance Monad (EitherIO e) where
     return = pure
     ma >>= f = EitherIO $ runEitherIO ma >>= either (return . Left) (runEitherIO . f)
 
--- Use our hand-made monad    
+-- Use our hand-made monad, we simplify original implementation using `lift`   
 getToken :: EitherIO LoginError Text
 getToken = do
-    EitherIO (fmap Right (T.putStrLn "Enter email address:"))
-    input <- EitherIO (fmap Right T.getLine)
-    EitherIO (return (getDomain input))
+    liftIO (T.putStrLn "Enter email address:")
+    input <- liftIO T.getLine
+    liftEither (getDomain input)
+
+-- What `lift` does is making a monad become a more powerful one    
+liftEither :: Either e a -> EitherIO e a
+liftEither = EitherIO . return 
+
+liftIO :: IO a -> EitherIO e a
+liftIO x = EitherIO $ fmap Right x
 
 
+-- User interface
+users :: Map Text Text
+users = M.fromList [("example.com", "qwerty123"), ("localhost", "password")]
+
+userLogin :: EitherIO LoginError Text
+userLogin = do
+    token       <- getToken
+    userPwd     <- maybe (liftEither (Left NoSuchUser)) return (M.lookup token users)
+    pwd         <- liftIO (T.putStrLn "Enter your password:" >> T.getLine)
+    if userPwd == pwd
+        then return token
+        else liftEither (Left WrongPassword)
+
+printResult :: Either LoginError Text -> IO ()
+printResult res = 
+    T.putStrLn $ case res of
+        Right token         -> append "Logged in with token: " token
+        Left InvalidEmail   -> "Invalid email address entered"
+        Left NoSuchUser     -> "No user with that email exists"
+        Left WrongPassword  -> "Wrong password"
